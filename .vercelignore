@@ -1,0 +1,20 @@
+# Exclude large directories that don't need to be deployed
+venv/
+.venv/
+env/
+.git/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+.idea/
+.vscode/
+
+# Keep model files but exclude large datasets/results for size
+augmented_dataset/
+gradcam_results/
+predictions/
+test_masks/
+
+# Build artifacts
+*.log
