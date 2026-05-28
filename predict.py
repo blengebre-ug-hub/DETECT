@@ -1,5 +1,6 @@
 import os
 import glob
+import math
 import numpy as np
 import tensorflow as tf
 import cv2
@@ -113,6 +114,59 @@ def predict_image(img_path, clf_model, seg_model, save_dir="predictions"):
 
     return predictions
 
+
+def _draw_prediction_tile(img, prediction, thumb_size=(256, 256)):
+    tile = cv2.resize(img, thumb_size)
+    overlay = tile.copy()
+    cv2.rectangle(overlay, (0, 0), (thumb_size[0], 42), (0, 0, 0), -1)
+    tile = cv2.addWeighted(overlay, 0.6, tile, 0.4, 0)
+
+    label_text = prediction['classification']['class']
+    confidence = prediction['classification']['confidence']
+    cv2.putText(tile, f"{label_text}", (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(tile, f"{confidence:.1f}%", (6, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+    if 'segmentation' in prediction:
+        anomaly = prediction['segmentation']['anomaly_percentage']
+        cv2.putText(tile, f"Anom: {anomaly:.1f}%", (110, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+    return tile
+
+
+def save_prediction_grid(results, image_dir, save_dir='predictions', max_images=12, cols=4,
+                         thumb_size=(256, 256), filename='sample_prediction_grid.png'):
+    if not results:
+        return None
+
+    selected = results[:max_images]
+    tiles = []
+
+    for item in selected:
+        image_path = os.path.join(image_dir, item['image'])
+        img = cv2.imread(image_path)
+        if img is None:
+            continue
+
+        tile = _draw_prediction_tile(img, item['predictions'], thumb_size=thumb_size)
+        tiles.append(tile)
+
+    if not tiles:
+        return None
+
+    rows = math.ceil(len(tiles) / cols)
+    total_tiles = rows * cols
+    blank_tile = np.zeros((thumb_size[1], thumb_size[0], 3), dtype=np.uint8)
+    tiles.extend([blank_tile] * (total_tiles - len(tiles)))
+
+    grid_rows = [np.hstack(tiles[i * cols:(i + 1) * cols]) for i in range(rows)]
+    grid = np.vstack(grid_rows)
+
+    os.makedirs(save_dir, exist_ok=True)
+    grid_path = os.path.join(save_dir, filename)
+    cv2.imwrite(grid_path, grid)
+    return grid_path
+
+
 def batch_predict(image_dir, clf_model, seg_model, save_dir="predictions", pattern="*.[pP][nN][gG]"):
     """Run predictions on multiple images."""
     image_paths = sorted(glob.glob(os.path.join(image_dir, pattern)))
@@ -147,6 +201,12 @@ def main():
                        help='Path to segmentation model')
     parser.add_argument('--output-dir', type=str, default='predictions',
                        help='Directory to save predictions')
+    parser.add_argument('--grid', action='store_true',
+                       help='Save a sample prediction grid image after batch prediction')
+    parser.add_argument('--grid-cols', type=int, default=4,
+                       help='Number of columns in the sample prediction grid')
+    parser.add_argument('--grid-images', type=int, default=12,
+                       help='Number of images to include in the sample prediction grid')
     parser.add_argument('--single', type=str, default=None,
                        help='Predict on single image (if provided, image-dir is ignored)')
 
@@ -176,6 +236,19 @@ def main():
         results = batch_predict(args.image_dir, clf_model, seg_model, args.output_dir)
         print(f"\n✓ Processed {len(results)} images")
         print(f"✓ Results saved to: {args.output_dir}")
+
+        if args.grid:
+            grid_path = save_prediction_grid(
+                results,
+                args.image_dir,
+                args.output_dir,
+                max_images=args.grid_images,
+                cols=args.grid_cols
+            )
+            if grid_path:
+                print(f"✓ Sample prediction grid saved to: {grid_path}")
+            else:
+                print("✗ Sample prediction grid could not be created.")
 
 if __name__ == "__main__":
     main()

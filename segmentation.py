@@ -5,8 +5,11 @@ import cv2
 from model import build_unet
 from dataset import IMG_SIZE
 
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Path to the segmentation model weights
-SEG_MODEL_PATH = "segmentation_model.keras"
+SEG_MODEL_PATH = os.path.join(BASE_DIR, "segmentation_model.keras")
 
 def load_segmentation_model():
     model = build_unet(img_size=IMG_SIZE)

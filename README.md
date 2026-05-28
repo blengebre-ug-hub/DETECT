@@ -104,6 +104,13 @@ Raw Ultrasound Images (224×224)
 [Grad-CAM Visualization] ← NEW
 ```
 
+## Sample Prediction Grid
+Run batch prediction and save a sample grid of predictions:
+```bash
+python predict.py --image-dir ../3D_EUS_PAF_v1_Images --output-dir predictions --grid
+```
+This creates `predictions/sample_prediction_grid.png` with labeled sample tiles.
+
 ---
 
 ## Key Improvements

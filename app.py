@@ -3,8 +3,17 @@ import base64
 import numpy as np
 import tensorflow as tf
 import cv2
+import smtplib
+import tempfile
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
+
 from dataset import IMG_SIZE, CLASS_NAMES
 from explainability import get_img_array, make_gradcam_heatmap
 from segmentation import load_segmentation_model, get_segmentation_mask, apply_mask_to_image
@@ -12,8 +21,11 @@ from segmentation import load_segmentation_model, get_segmentation_mask, apply_m
 app = Flask(__name__)
 CORS(app)
 
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Load Classification Model
-MODEL_PATH = "best_model.keras"
+MODEL_PATH = os.path.join(BASE_DIR, "best_model.keras")
 try:
     model = tf.keras.models.load_model(MODEL_PATH)
     print("Classification model loaded successfully.")
@@ -52,8 +64,9 @@ def predict():
     if img is None:
         return jsonify({"error": "Invalid image file."}), 400
 
-    # Save temp original for processing
-    temp_path = "temp_uploaded.png"
+    # Use system temp directory for temporary files
+    temp_dir = tempfile.gettempdir()
+    temp_path = os.path.join(temp_dir, "temp_uploaded.png")
     cv2.imwrite(temp_path, img)
 
     # Prepare for model
@@ -76,7 +89,7 @@ def predict():
     isolated_img = cv2.bitwise_and(img, mask_3d)
     
     # Save temporarily to load through the standard get_img_array function
-    isolated_path = "temp_isolated.png"
+    isolated_path = os.path.join(temp_dir, "temp_isolated.png")
     cv2.imwrite(isolated_path, isolated_img)
 
     # 2. Classification Stage (using Grad-CAM for explainability)
@@ -146,5 +159,84 @@ def predict():
         "heatmap": f"data:image/png;base64,{base64_heatmap}"
     })
 
+@app.route("/send_email", methods=["POST"])
+def send_email():
+    data = request.json
+    if not data or 'email' not in data:
+        return jsonify({"error": "No email provided."}), 400
+        
+    recipient = data['email']
+    detection_result = data.get('detection_result', 'N/A')
+    pred_class = data.get('pred_class', 'N/A')
+    confidence = data.get('confidence', 'N/A')
+    summary = data.get('summary', 'N/A')
+    
+    # Environment variables for SMTP
+    # If not set, we'll log it as a simulation (useful for testing without real creds)
+    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
+    sender_email = os.environ.get('SENDER_EMAIL')
+    sender_password = os.environ.get('SENDER_PASSWORD')
+    
+    # Create HTML Email Content
+    html_content = f"""
+    <html>
+      <body style="font-family: 'Inter', Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background-color: #050508; padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
+            <h2 style="color: #00d2ff; margin: 0; font-family: 'Outfit', sans-serif;">EUS-AI Vision</h2>
+            <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;">Diagnostic Analysis Report</p>
+        </div>
+        <div style="background-color: #ffffff; padding: 30px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
+            <p style="font-size: 16px; margin-top: 0;">Hello,</p>
+            <p style="font-size: 16px;">Your AI Diagnostic Analysis is complete. Here are the detailed results of the scan:</p>
+            
+            <div style="background: linear-gradient(135deg, rgba(0, 210, 255, 0.05), rgba(58, 123, 213, 0.05)); padding: 25px; border-left: 4px solid #00d2ff; border-radius: 8px; margin: 25px 0;">
+                <p style="margin: 0 0 15px 0; font-size: 15px;"><strong style="color: #64748b; text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 5px;">Detection Result</strong> <span style="font-size: 18px; font-weight: 600; color: #0f172a;">{detection_result}</span></p>
+                <p style="margin: 0 0 15px 0; font-size: 15px;"><strong style="color: #64748b; text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 5px;">Classification</strong> <span style="display: inline-block; background-color: #f1f5f9; padding: 6px 12px; border-radius: 6px; font-weight: 600; color: #3b82f6;">{pred_class}</span></p>
+                <p style="margin: 0 0 15px 0; font-size: 15px;"><strong style="color: #64748b; text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 5px;">AI Confidence Score</strong> <span style="font-size: 20px; font-weight: 700; color: #10b981;">{confidence}%</span></p>
+                <p style="margin: 0; font-size: 15px;"><strong style="color: #64748b; text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 5px;">Clinical Summary</strong> <span style="color: #334155;">{summary}</span></p>
+            </div>
+            
+            <p style="font-size: 13px; color: #64748b; font-style: italic; background-color: #f8fafc; padding: 15px; border-radius: 6px;">
+                <strong>Disclaimer:</strong> This is an AI-assisted analysis intended to support, not replace, professional medical judgment. All results should be reviewed by a clinical professional.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+            <p style="font-size: 14px; color: #64748b; margin: 0;">Best regards,<br><strong style="color: #0f172a;">3D EUS AI System</strong></p>
+        </div>
+      </body>
+    </html>
+    """
+    
+    if not sender_email or not sender_password:
+        # Simulate sending if credentials are not configured
+        print(f"\n--- SIMULATED EMAIL TO {recipient} ---")
+        print("No SENDER_EMAIL or SENDER_PASSWORD environment variables found. Simulating email.")
+        print(f"Subject: Your 3D EUS AI Diagnostic Report")
+        print(html_content)
+        print("--------------------------------------\n")
+        return jsonify({"message": "Email simulation successful (credentials not configured)."})
+        
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = recipient
+        msg['Subject'] = "Your 3D EUS AI Diagnostic Report"
+        
+        msg.attach(MIMEText(html_content, 'html'))
+        
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+        
+        return jsonify({"message": "Email sent successfully!"})
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return jsonify({"error": f"Failed to send email: {str(e)}"}), 500
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    port = int(os.environ.get('PORT', 5001))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host="0.0.0.0", port=port, debug=debug)

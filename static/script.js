@@ -11,6 +11,12 @@ const confFill = document.getElementById('confidence-fill');
 const resetBtn = document.getElementById('reset-btn');
 const detectionResult = document.getElementById('detection-result');
 const clinicalSummary = document.getElementById('clinical-summary-text');
+const emailInput = document.getElementById('email-input');
+const sendEmailBtn = document.getElementById('send-email-btn');
+const emailStatus = document.getElementById('email-status');
+const sendIcon = sendEmailBtn.querySelector('.send-icon');
+const btnText = sendEmailBtn.querySelector('.btn-text');
+const spinner = sendEmailBtn.querySelector('.spinner');
 
 // Click to upload
 dropZone.addEventListener('click', () => fileInput.click());
@@ -118,4 +124,71 @@ function resetUI() {
     originalImg.src = '';
     segmentationImg.src = '';
     heatmapImg.src = '';
+    emailInput.value = '';
+    emailStatus.className = 'email-status hidden';
+}
+
+// Email Sending Logic
+sendEmailBtn.addEventListener('click', () => {
+    const email = emailInput.value.trim();
+    if (!email) {
+        showEmailStatus('Please enter a valid email address.', 'error');
+        return;
+    }
+    
+    // Basic email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showEmailStatus('Please enter a valid email format.', 'error');
+        return;
+    }
+
+    // Set Loading State
+    sendEmailBtn.disabled = true;
+    sendIcon.classList.add('hidden');
+    spinner.classList.remove('hidden');
+    btnText.textContent = 'Sending...';
+    emailStatus.classList.add('hidden');
+    emailStatus.className = 'email-status hidden';
+
+    const payload = {
+        email: email,
+        detection_result: detectionResult.textContent,
+        pred_class: predClass.textContent,
+        confidence: predConf.textContent.replace('%', ''),
+        summary: clinicalSummary.textContent
+    };
+
+    fetch('/send_email', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json().then(data => ({ status: response.status, body: data })))
+    .then(result => {
+        if (result.status === 200) {
+            showEmailStatus(result.body.message || 'Email sent successfully!', 'success');
+            emailInput.value = ''; // clear on success
+        } else {
+            showEmailStatus(result.body.error || 'Failed to send email.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Email error:', error);
+        showEmailStatus('A network error occurred. Please try again.', 'error');
+    })
+    .finally(() => {
+        // Reset Loading State
+        sendEmailBtn.disabled = false;
+        spinner.classList.add('hidden');
+        sendIcon.classList.remove('hidden');
+        btnText.textContent = 'Send Report';
+    });
+});
+
+function showEmailStatus(message, type) {
+    emailStatus.textContent = message;
+    emailStatus.className = `email-status ${type}`;
 }
