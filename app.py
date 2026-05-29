@@ -1,7 +1,11 @@
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['TF_NUM_INTRAOP_THREADS'] = '1'
+os.environ['TF_NUM_INTEROP_THREADS'] = '1'
+
 import base64
 import numpy as np
-import tensorflow as tf
 import cv2
 import smtplib
 import tempfile
@@ -10,6 +14,16 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
+
+import tensorflow as tf
+try:
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.config.set_visible_devices([], 'GPU')
+except Exception:
+    pass
+
+import gc
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -74,6 +88,13 @@ def predict():
     
     if img is None:
         return jsonify({"error": "Invalid image file."}), 400
+
+    # Resize image if it's too large to save memory
+    max_dim = 800
+    h, w = img.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)))
 
     # Use system temp directory for temporary files
     temp_dir = tempfile.gettempdir()
@@ -162,6 +183,7 @@ def predict():
         if os.path.exists(isolated_path):
             os.remove(isolated_path)
 
+        gc.collect()
         return jsonify({
             "detection_result": detection_result,
             "class": pred_class,
@@ -198,6 +220,7 @@ def predict():
 
     os.remove(temp_path)
 
+    gc.collect()
     return jsonify({
         "detection_result": detection_result,
         "class": pred_class,
