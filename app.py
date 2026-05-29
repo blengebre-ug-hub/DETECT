@@ -33,7 +33,7 @@ def get_classification_model():
     global _model_cache
     if _model_cache is None:
         try:
-            _model_cache = tf.keras.models.load_model(MODEL_PATH)
+            _model_cache = tf.keras.models.load_model(MODEL_PATH, compile=False)
             print("Classification model loaded successfully.")
         except Exception as e:
             print(f"Error loading classification model: {e}")
