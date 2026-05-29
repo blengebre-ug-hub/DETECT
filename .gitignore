@@ -10,7 +10,11 @@ __pycache__/
 *$py.class
 
 # Models and large weights files
-
+*.keras
+*.h5
+*.pkl
+!best_model.keras
+!segmentation_model.keras
 
 # Datasets and generated images
 augmented_dataset/
