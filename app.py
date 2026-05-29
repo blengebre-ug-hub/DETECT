@@ -24,22 +24,33 @@ CORS(app)
 # Get the directory where this script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Load Classification Model
 MODEL_PATH = os.path.join(BASE_DIR, "best_model.keras")
-try:
-    model = tf.keras.models.load_model(MODEL_PATH)
-    print("Classification model loaded successfully.")
-except Exception as e:
-    print(f"Error loading classification model: {e}")
-    model = None
+_model_cache = None
+_seg_model_cache = None
 
-# Load Segmentation Model
-try:
-    seg_model = load_segmentation_model()
-    print("Segmentation model initialized.")
-except Exception as e:
-    print(f"Error initializing segmentation model: {e}")
-    seg_model = None
+
+def get_classification_model():
+    global _model_cache
+    if _model_cache is None:
+        try:
+            _model_cache = tf.keras.models.load_model(MODEL_PATH)
+            print("Classification model loaded successfully.")
+        except Exception as e:
+            print(f"Error loading classification model: {e}")
+            _model_cache = None
+    return _model_cache
+
+
+def get_segmentation_model():
+    global _seg_model_cache
+    if _seg_model_cache is None:
+        try:
+            _seg_model_cache = load_segmentation_model()
+            print("Segmentation model initialized.")
+        except Exception as e:
+            print(f"Error initializing segmentation model: {e}")
+            _seg_model_cache = None
+    return _seg_model_cache
 
 @app.route("/")
 def index():
@@ -47,8 +58,11 @@ def index():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    if model is None:
-        return jsonify({"error": "Model not loaded on server."}), 500
+    model = get_classification_model()
+    seg_model = get_segmentation_model()
+
+    if model is None or seg_model is None:
+        return jsonify({"error": "Models are not available on the server."}), 500
 
     if "file" not in request.files:
         return jsonify({"error": "No file part in request."}), 400

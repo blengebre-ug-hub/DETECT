@@ -14,9 +14,9 @@ const clinicalSummary = document.getElementById('clinical-summary-text');
 const emailInput = document.getElementById('email-input');
 const sendEmailBtn = document.getElementById('send-email-btn');
 const emailStatus = document.getElementById('email-status');
-const sendIcon = sendEmailBtn.querySelector('.send-icon');
-const btnText = sendEmailBtn.querySelector('.btn-text');
-const spinner = sendEmailBtn.querySelector('.spinner');
+const sendIcon = sendEmailBtn ? sendEmailBtn.querySelector('.send-icon') : null;
+const btnText = sendEmailBtn ? sendEmailBtn.querySelector('.btn-text') : null;
+const spinner = sendEmailBtn ? sendEmailBtn.querySelector('.spinner') : null;
 
 // Click to upload
 dropZone.addEventListener('click', () => fileInput.click());
@@ -129,12 +129,13 @@ function resetUI() {
 }
 
 // Email Sending Logic
-sendEmailBtn.addEventListener('click', () => {
-    const email = emailInput.value.trim();
-    if (!email) {
-        showEmailStatus('Please enter a valid email address.', 'error');
-        return;
-    }
+if (sendEmailBtn) {
+    sendEmailBtn.addEventListener('click', () => {
+        const email = emailInput ? emailInput.value.trim() : '';
+        if (!email) {
+            showEmailStatus('Please enter a valid email address.', 'error');
+            return;
+        }
     
     // Basic email validation regex
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -159,36 +160,38 @@ sendEmailBtn.addEventListener('click', () => {
         summary: clinicalSummary.textContent
     };
 
-    fetch('/send_email', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json().then(data => ({ status: response.status, body: data })))
-    .then(result => {
-        if (result.status === 200) {
-            showEmailStatus(result.body.message || 'Email sent successfully!', 'success');
-            emailInput.value = ''; // clear on success
-        } else {
-            showEmailStatus(result.body.error || 'Failed to send email.', 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Email error:', error);
-        showEmailStatus('A network error occurred. Please try again.', 'error');
-    })
-    .finally(() => {
-        // Reset Loading State
-        sendEmailBtn.disabled = false;
-        spinner.classList.add('hidden');
-        sendIcon.classList.remove('hidden');
-        btnText.textContent = 'Send Report';
+        fetch('/send_email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(result => {
+            if (result.status === 200) {
+                showEmailStatus(result.body.message || 'Email sent successfully!', 'success');
+                if (emailInput) emailInput.value = ''; // clear on success
+            } else {
+                showEmailStatus(result.body.error || 'Failed to send email.', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Email error:', error);
+            showEmailStatus('A network error occurred. Please try again.', 'error');
+        })
+        .finally(() => {
+            // Reset Loading State
+            sendEmailBtn.disabled = false;
+            if (spinner) spinner.classList.add('hidden');
+            if (sendIcon) sendIcon.classList.remove('hidden');
+            if (btnText) btnText.textContent = 'Send Report';
+        });
     });
-});
+}
 
 function showEmailStatus(message, type) {
+    if (!emailStatus) return;
     emailStatus.textContent = message;
     emailStatus.className = `email-status ${type}`;
 }
